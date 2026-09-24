@@ -44,7 +44,7 @@ Frontend can run ahead of the backend by one phase using mocks. **Freeze rule:**
 - [x] 3.2 Upload + mapping + assignment UI
 - [x] 4.1 OCR adapter + preprocessing + confidence + job runner
 - [x] 4.2 Processing screen + answer list + OCR panel
-- [ ] 5.1 Evaluator + validator + LLM client
+- [x] 5.1 Evaluator + validator + LLM client
 - [ ] 5.2 Marking service + guards
 - [ ] 5.3 Workspace AI panel + marking panel
 - [ ] 6.1 Pinecone indexer + retriever + fallback
@@ -58,8 +58,16 @@ Frontend can run ahead of the backend by one phase using mocks. **Freeze rule:**
 - [ ] 10.1 Seed/demo data
 - [ ] 10.2 Deploy + mobile pass + smoke test
 
-**Next session should start with: step 5.1 — Evaluator + validator + LLM client (backend).**
-Claude builds the LLMClient adapter, evaluator service, Pydantic response validator with 1 retry repair, prompt templates, and standard evaluation endpoint.
+**Next session should start with: step 5.2 — Marking service + guards (backend).**
+Build `app/services/marking_service.py` implementing M1 (`POST /answers/{id}/evaluation/accept-ai`) and M2
+(`PUT /answers/{id}/evaluation`) per api-spec.md §12. Guards: refuse `accept-ai` when
+`ocr_review_required && !ocr_verified` (OCR_NOT_VERIFIED) or when the linked AI evaluation is stale
+(AI_EVAL_STALE, use `app.ai.llm.validator.is_stale`, already built in 5.1). Validate marks range and
+criterion-sum (MARKS_OUT_OF_RANGE, CRITERIA_SUM_MISMATCH). On submit, write `answers.final_marks`,
+`final_source="examiner"`, `marking_status="marked"` (invariant 5 — this is the only other place besides
+ModerationService allowed to write final_marks). Reuse the ANSWER_LOCKED / assignment-check pattern already
+established in `ocr_service.py` and `evaluator_service.py`. Do not touch anomalies, moderation, or Pinecone —
+those are Phases 6-8.
 
 
 ## 4. Demo script (target for phase 10)

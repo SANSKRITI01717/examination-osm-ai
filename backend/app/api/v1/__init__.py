@@ -5,6 +5,7 @@ from fastapi import APIRouter
 
 from app.api.v1.answers import router as answers_router
 from app.api.v1.auth import router as auth_router
+from app.api.v1.evaluation import router as evaluation_router
 from app.api.v1.exams import router as exams_router
 from app.api.v1.ocr import router as ocr_router
 from app.api.v1.questions import router as questions_router
@@ -21,5 +22,6 @@ api_v1_router.include_router(students_router)
 api_v1_router.include_router(sheets_router)
 api_v1_router.include_router(ocr_router)
 api_v1_router.include_router(answers_router)
+api_v1_router.include_router(evaluation_router)
 
 

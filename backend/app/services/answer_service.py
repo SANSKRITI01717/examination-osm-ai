@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
+from app.ai.llm.validator import is_stale
 from app.models.evaluation import AIEvaluation
 from app.models.anomaly import Anomaly
 from app.models.answer import Answer
@@ -197,6 +198,17 @@ def get_answer_detail(db: Session, answer_id: int, current_user: User) -> Dict[s
 
     ai_latest = None
     if latest_ai_eval:
+        current_effective_text = (
+            ans.verified_text if ans.verified_text and ans.verified_text.strip() else (ans.ocr_text or "")
+        )
+        current_criteria = question.rubric.criteria if question and question.rubric else []
+        stale = is_stale(
+            latest_ai_eval.input_hash,
+            current_effective_text,
+            current_criteria,
+            latest_ai_eval.mode_used,
+            latest_ai_eval.prompt_version,
+        )
         ai_latest = {
             "id": latest_ai_eval.id,
             "mode_used": latest_ai_eval.mode_used,
@@ -211,7 +223,7 @@ def get_answer_detail(db: Session, answer_id: int, current_user: User) -> Dict[s
             "criteria": latest_ai_eval.criteria or [],
             "overall_reason": latest_ai_eval.overall_reason,
             "warnings": latest_ai_eval.warnings or [],
-            "stale": False,
+            "stale": stale,
             "created_at": (
                 latest_ai_eval.created_at.isoformat()
                 if latest_ai_eval.created_at
