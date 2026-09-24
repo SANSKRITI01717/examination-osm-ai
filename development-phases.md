@@ -47,7 +47,7 @@ Frontend can run ahead of the backend by one phase using mocks. **Freeze rule:**
 - [x] 5.1 Evaluator + validator + LLM client
 - [x] 5.2 Marking service + guards
 - [ ] 5.3 Workspace AI panel + marking panel
-- [ ] 6.1 Pinecone indexer + retriever + fallback
+- [x] 6.1 Pinecone indexer + retriever + fallback
 - [ ] 6.2 Reference documents UI
 - [ ] 7.1 Anomaly detectors + runner
 - [ ] 7.2 Anomaly UI
@@ -58,18 +58,27 @@ Frontend can run ahead of the backend by one phase using mocks. **Freeze rule:**
 - [ ] 10.1 Seed/demo data
 - [ ] 10.2 Deploy + mobile pass + smoke test
 
-**Next session should start with: step 6.1 — Pinecone indexer + retriever + fallback (backend), per `ai-pipeline.md` §6.**
-Step 5.3 (workspace AI panel + marking panel) is a frontend step (Gemini); the backend endpoints it needs
-(V1, V3, M1, M2) are done and in `backend/openapi.json`. Before 6.1, note these open items:
+**Next session should start with: step 7.1 — Anomaly detectors + runner (backend), per `ai-pipeline.md` §10.**
+Step 6.2 (reference documents UI) is a frontend step (Gemini); the backend endpoints it needs (D1, D2, D3, D5) are
+done and in `backend/openapi.json` — D4 (reindex) is SHOULD HAVE and intentionally not built. Before 7.1, note these
+open items carried forward:
 
-- **V2 (batch AI evaluation, `POST /exams/{id}/ai-evaluation/run`) is not built.** It is listed in Phase 5's endpoints
-  (V1–V3) but no checklist step covers it; 5.1 and 5.2 both deliberately skipped it. Decide with the owner where it goes.
-- **`app/core/storage/` is missing from the repo/ZIP** because `.gitignore` line 51 (`storage/`) also matches that Python
-  package. The code imports it (`ocr_service.py`, `sheets.py`, `sheet_service.py`), so a fresh clone cannot start.
-  Fix `.gitignore` (anchor it: `/storage/` and `/backend/storage/`) and commit the package. `.gitignore` is not in the
-  ownership table, so this was left for the owner rather than changed silently.
-- **Frontend contract mismatch for 5.3:** `MarkingPanel.tsx` sends `criterion_marks` as a `{id: marks}` map; the locked schema
-  and the backend use a list `[{criterion_id, awarded_marks}]` (see `api-spec.md` §12 implementation notes).
+- **V2 (batch AI evaluation, `POST /exams/{id}/ai-evaluation/run`) is still not built.** Not covered by 5.1, 5.2, or
+  6.1. Decide with the owner where it goes — likely alongside 7.1's runner, since both are background-job patterns.
+- **`app/core/storage/`** — present in this ZIP; confirm the `.gitignore` fix mentioned in the previous note was
+  actually applied and committed (anchored `/storage/` / `/backend/storage/`), not just worked around locally.
+- **Frontend contract mismatch for 5.3** (`MarkingPanel.tsx` criterion_marks shape) — still open, still frontend-side.
+- **NEW — Pinecone REST contract is UNVERIFIED against a live instance.** `app/ai/rag/pinecone_store.py` was written
+  with no internet access; the control-plane/data-plane request shapes match Pinecone's documented API as of this
+  codebase's training data but were never exercised against the real service. It fails safe (falls back to standard
+  mode via `REFERENCE_UNAVAILABLE`) if the contract is wrong, so nothing breaks — but reference-grounded mode won't
+  produce real retrieval until someone with real `PINECONE_API_KEY`/`OPENAI_API_KEY` credentials and internet access
+  verifies it end to end. See the docstring at the top of `pinecone_store.py` for exactly what to check.
+- **NEW — one new dependency added:** `python-docx` (for DOCX reference-document text extraction). Everything else
+  in 6.1 (OpenAI embeddings, Pinecone) goes through `httpx` directly, matching the existing LLM-client pattern —
+  no SDK added for either.
+- **NEW — new env vars:** `OPENAI_API_KEY` was added to `.env.example` and `app/core/config.py` (was missing before;
+  `EMBEDDING_PROVIDER`/`EMBEDDING_MODEL`/`PINECONE_*` already existed but had no key to actually call OpenAI).
 
 
 ## 4. Demo script (target for phase 10)

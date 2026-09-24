@@ -1,12 +1,11 @@
 """
-AI Evaluation Service — standard-mode evaluator (V1, V3).
+AI Evaluation Service — standard and reference-grounded evaluator (V1, V3).
 Contract: api-spec.md §10 and ai-pipeline.md §4-§9.
 
-Reference-grounded retrieval (Pinecone) is not built yet (Phase 6). Per the
-documented fallback logic in ai-pipeline.md §6 step 4, a reference_grounded
-question falls back to standard mode with a REFERENCE_UNAVAILABLE warning
-rather than blocking the exam — this is existing designed behaviour, not new
-scope.
+Reference-grounded mode attempts real Pinecone retrieval (Phase 6). If the
+embedding/vector-store call fails, or nothing scores above the exam's
+retrieval_min_score, evaluation gracefully falls back to standard mode with
+a warning (ai-pipeline.md §6 step 4) — it never blocks the exam.
 """
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -17,6 +16,8 @@ from sqlalchemy.orm import Session
 from app.ai.llm import LLMError, get_llm_client
 from app.ai.llm.prompts import PROMPT_VERSION, SYSTEM_PROMPT, build_repair_prompt, build_user_prompt
 from app.ai.llm.validator import compute_input_hash, is_stale, validate_llm_output
+from app.ai.rag.base import RagError
+from app.ai.rag.retriever import retrieve_chunks
 from app.core.errors import AppError
 from app.models.answer import Answer
 from app.models.evaluation import AIEvaluation
@@ -93,15 +94,49 @@ def run_ai_evaluation(
             status_code=409,
         )
 
-    # Mode selection per ai-pipeline.md §6-7. Pinecone retrieval doesn't exist yet
-    # (Phase 6), so any reference_grounded question gracefully falls back now.
+    # Mode selection per ai-pipeline.md §6-7.
     mode_requested = "standard" if force_standard else question.evaluation_mode
     warnings: List[str] = []
+    mode_used = "standard"
+    reference_chunks_for_prompt: Optional[List[Dict[str, Any]]] = None
+    retrieval_for_storage: Optional[List[Dict[str, Any]]] = None
+
     if mode_requested == "reference_grounded":
-        mode_used = "standard"
-        warnings.append("REFERENCE_UNAVAILABLE")
-    else:
-        mode_used = "standard"
+        exam_settings = exam.settings or {}
+        top_k = int(exam_settings.get("retrieval_top_k", 4))
+        min_score = float(exam_settings.get("retrieval_min_score", 0.50))
+        try:
+            chunks = retrieve_chunks(
+                db=db,
+                exam_id=exam.id,
+                question_id=question.id,
+                rubric_criteria=rubric.criteria,
+                question_text=question.text,
+                top_k=top_k,
+                min_score=min_score,
+            )
+        except RagError:
+            # Embedding/vector-store failure — never block the exam (ai-pipeline.md §6 step 4).
+            chunks = None
+
+        if chunks is None:
+            warnings.append("REFERENCE_UNAVAILABLE")
+        elif not chunks:
+            warnings.append("NO_REFERENCE_FOUND")
+        else:
+            mode_used = "reference_grounded"
+            reference_chunks_for_prompt = [
+                {"title": c.title, "text": c.text} for c in chunks
+            ]
+            retrieval_for_storage = [
+                {
+                    "doc_id": c.doc_id,
+                    "chunk_index": c.chunk_index,
+                    "score": c.score,
+                    "snippet": c.text[:280],
+                }
+                for c in chunks
+            ]
 
     user_prompt = build_user_prompt(
         question_text=question.text,
@@ -109,7 +144,7 @@ def run_ai_evaluation(
         criteria=rubric.criteria,
         guidance=rubric.guidance,
         effective_text=effective_text,
-        reference_chunks=None,
+        reference_chunks=reference_chunks_for_prompt,
     )
 
     answer.ai_status = "processing"
@@ -184,7 +219,7 @@ def run_ai_evaluation(
         llm_confidence=validation.llm_confidence,
         criteria=validation.criteria,
         overall_reason=validation.overall_reason,
-        retrieval=None,
+        retrieval=retrieval_for_storage,
         warnings=warnings,
         latency_ms=result.latency_ms,
         triggered_by=user.id,

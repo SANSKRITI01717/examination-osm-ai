@@ -1,78 +1,87 @@
 # handoff.md
 
-## What Was Completed — Step 5.2 (Marking service + guards)
+## What Was Completed — Step 6.1 (Pinecone indexer + retriever + fallback)
 
-The examiner can now decide marks. This is the first place `answers.final_marks` is written (invariant 5).
+Reference-grounded evaluation is now wired end to end:
 
-1. **M1 `POST /api/v1/answers/{id}/evaluation/accept-ai`** — accept the AI suggestion as-is (`source=ai_accepted`). Refused with `409 OCR_NOT_VERIFIED` when OCR needs review and isn't verified, and `409 AI_EVAL_STALE` when the answer text/rubric changed since the suggestion (reuses `is_stale()` from 5.1).
-2. **M2 `PUT /api/v1/answers/{id}/evaluation`** — save a draft or submit explicit marks (`ai_modified` / `manual`). Validates `0 ≤ marks ≤ question.max_marks` (`422 MARKS_OUT_OF_RANGE`), 0.5 steps, per-criterion range, and that `criterion_marks` sums to `marks_awarded` (`422 CRITERIA_SUM_MISMATCH`). `ai_modified` requires `ai_evaluation_id`.
-3. **On submit:** `evaluations` row → `submitted`; `answers.final_marks`, `final_source="examiner"`, `marking_status` = `marked` (or `flagged` if an open anomaly exists for the answer).
-4. Only the **assigned examiner** may call these (admin/moderator → 403). Exam must be in `evaluation` and the answer not `moderated` (`409 ANSWER_LOCKED`).
-5. `api-spec.md` §12 has an "Implementation notes" block; `backend/openapi.json` re-exported (additive vs the ZIP: V1, V3, M1, M2 + 9 schemas).
+1. **RAG adapters** (`backend/app/ai/rag/`): `EmbeddingProvider`/`VectorStore` interfaces (mirrors the `LLMClient`/`OCRProvider` pattern from earlier steps), an OpenAI embeddings client and a Pinecone client — **both called directly via `httpx`, no new SDKs**, plus a dependency-free text chunker and a PDF/DOCX/TXT extractor.
 
-**Stopped at 5.2 on purpose — 6.1 was not started.** See "Why" below.
+2. **Reference document management** (`backend/app/services/reference_service.py`, `backend/app/api/v1/reference.py`): D1 (upload → background extract/chunk/embed/upsert job), D2 (list with status/chunk_count), D3 (delete doc + its vectors, best-effort on vector-store failure), D5 (debug/preview retrieval). D4 (reindex) is SHOULD HAVE and intentionally skipped.
+
+3. **Retrieval wired into evaluation** (`backend/app/services/evaluator_service.py`): a `reference_grounded` question now actually attempts retrieval — building the query from the question+rubric (never the student's answer), embedding it, searching Pinecone, filtering by `retrieval_min_score`. Three outcomes: chunks found → real reference-grounded evaluation with `ai_evaluations.retrieval` populated; nothing above threshold → falls back to standard with `NO_REFERENCE_FOUND`; embedding/vector-store call fails → falls back to standard with `REFERENCE_UNAVAILABLE`. **A standard-mode question never calls retrieval at all** (there's a regression test specifically for this — it deliberately does NOT mock the retrieval layer, so it would fail loudly with a real network-call error if that ever changed).
 
 ---
 
-## Files Created / Modified (full paths, relative to repo root)
+## Files Created / Modified
 
 ```
-backend/app/services/marking_service.py     NEW
-backend/app/schemas/marking.py              NEW
-backend/app/api/v1/marking.py               NEW
-backend/app/api/v1/__init__.py              MODIFIED  (wired marking_router)
-backend/tests/test_marking.py               NEW       (20 tests)
-backend/openapi.json                        MODIFIED  (re-exported, additive only)
-api-spec.md                                 MODIFIED  (§12 implementation notes)
-development-phases.md                       MODIFIED  (5.2 ticked, next-step pointer, open items)
-session-state.md                            MODIFIED
-handoff.md                                  MODIFIED
+backend/
+├── app/
+│   ├── ai/
+│   │   └── rag/                          ← NEW package
+│   │       ├── __init__.py               ← factories
+│   │       ├── base.py                   ← interfaces
+│   │       ├── embeddings.py             ← OpenAI via httpx
+│   │       ├── pinecone_store.py         ← Pinecone via httpx (⚠️ unverified, see below)
+│   │       ├── splitter.py               ← chunking (verified by direct execution)
+│   │       ├── extractor.py              ← PDF/DOCX/TXT text extraction
+│   │       └── retriever.py              ← query building + retrieval + title resolution
+│   ├── api/v1/
+│   │   ├── reference.py                  ← NEW: D1, D2, D3, D5 routes
+│   │   └── __init__.py                   ← wired reference_router in
+│   ├── core/
+│   │   └── config.py                     ← added OPENAI_API_KEY setting
+│   ├── schemas/
+│   │   └── reference.py                  ← NEW: request/response schemas
+│   └── services/
+│       ├── reference_service.py          ← NEW
+│       └── evaluator_service.py          ← mode selection now does real retrieval
+├── tests/
+│   └── test_reference.py                 ← NEW: 10 integration tests
+├── requirements.txt                      ← + python-docx (only new dependency)
+└── .env.example                          ← + OPENAI_API_KEY
+
+development-phases.md                     ← 6.1 ticked; next points to 7.1
+session-state.md                          ← full detail on this session
+handoff.md                                ← this file
 ```
 
-No frontend files. No new dependencies. No model/migration changes.
-
-**Not part of the deliverable (sandbox-only, do not copy into your repo):** `backend/app/core/storage/` (a labelled stand-in — your real package would be overwritten), `backend/storage/` (test artefacts), `backend/.pytest_cache/`.
+No frontend files were touched.
 
 ---
 
-## Test Results (real runs, this session)
+## Important Decisions
 
-Environment: Linux, Python 3.12, PostgreSQL 16.15, FastAPI 0.141.1, `alembic upgrade head` applied.
-
-| Run | Result |
-|---|---|
-| Pristine extract of your ZIP (+ storage stand-in): `python -m pytest tests/ -q` | **42 passed** |
-| Marking files present, router not wired | 44 passed, **18 failed** (404s) — fixed by wiring |
-| Full suite after wiring: `python -m pytest tests/ -v` | **62 passed, 0 failed** (42 old + 20 new) |
-| Full suite after removing duplicated router lines | **62 passed, 0 failed** |
-| Mutation check (7 mutants of the guards/validation) | **7/7 caught** by their own tests; file restored (md5 identical) |
-
-The 20 new tests cover: accept-ai success (final_marks/final_source/marking_status in the DB, placeholder evaluation reused, AI row untouched, AI alone never writes final marks); OCR-not-verified guard; manual/modified still allowed when OCR unverified; stale guard + recovery after AI re-run; foreign/unknown `ai_evaluation_id`; manual submit; re-submission; draft doesn't write final marks and can't be re-drafted after submit; out-of-range (both ends + boundaries); 0.5 step; criterion-sum mismatch, per-criterion range, unknown and duplicate criterion; `ai_modified` without `ai_evaluation_id`; `ai_accepted` rejected via PUT; missing required fields; unassigned examiner / admin / moderator / no token; 404; exam not in evaluation; moderated answer; `flagged` preserved with an open anomaly.
-
-You said you'd verify on Windows with `python -m pytest tests/ -v` — please do; I could not run on Windows.
+- **Same "direct HTTP, no SDK" pattern as step 5.1's Anthropic client** — applied to both OpenAI embeddings and Pinecone. Keeps the dependency list to exactly one new package (`python-docx`, for DOCX extraction only).
+- **The text splitter is a custom word-count chunker, not LangChain.** `ai-pipeline.md` §6 only requires "LangChain use is limited to the text splitter" — it doesn't mandate the actual library. This piece is the one part of 6.1 that was genuinely executed and verified in this session (see Problems/Blockers below for why the rest couldn't be).
+- **Reference document upload/delete requires `exam.status == "draft"`**, same rule as question/rubric management. This wasn't explicit in `architecture.md`'s lifecycle table for reference docs specifically, but it's required anyway by the draft→evaluation transition precondition ("every reference_grounded question has ≥1 indexed reference document").
+- **Retrieval query is built from question + rubric only, never the student's answer** — exactly per `ai-pipeline.md` §6 point 1, so a wrong or adversarial answer can't steer what gets retrieved.
 
 ---
 
-## ⚠️ Things You Need To Know
+## Problems / Blockers — READ THIS BEFORE TRUSTING THIS STEP
 
-1. **Unexpected files in the sandbox.** `marking_service.py`, `schemas/marking.py`, `api/v1/marking.py` and `tests/test_marking.py` were already in the sandbox working directory when I started, but are **not in your ZIP** and I didn't write them. Other unexplained edits appeared during the session (a duplicated router import/`include_router`, a regenerated `openapi.json`, an `api-spec.md` note, and rewritten tracking docs that made claims I hadn't verified). I read every marking file in full, checked them against the spec and invariants, removed the duplicate wiring, re-verified the claims, and mutation-tested the guards — details in `session-state.md` → Provenance note. If you didn't expect these files, please review `marking_service.py` yourself before merging; it's ~300 lines.
-2. **`backend/app/core/storage/` is missing from the ZIP.** `.gitignore` line 51 (`storage/`) also matches the Python package, so git never tracked it. On a fresh clone the app fails to import (`No module named 'app.core.storage'`). It exists on your machine (your 42/42 run proves it), so nothing is broken for you locally, but the repo is incomplete. Suggested fix: change the ignore lines to `/storage/` and `/backend/storage/`, then commit `backend/app/core/storage/`. I did **not** change `.gitignore` (not an owned file) and did **not** ship my stand-in.
-3. **If M1/M2 ever 404 for you**, check that `app/api/v1/__init__.py` contains exactly one `from app.api.v1.marking import router as marking_router` and one `api_v1_router.include_router(marking_router)`.
-4. **V2 (batch AI evaluation) is still unbuilt** and isn't in any checklist step. Needs an owner decision on where it goes.
-5. **Frontend contract mismatch (for 5.3):** `frontend/src/components/workspace/MarkingPanel.tsx` sends `criterion_marks` as `{criterion_id: marks}`. The locked schema and the backend use `[{criterion_id, awarded_marks}]`. I followed the locked schema. Gemini should regenerate types from the new `openapi.json` (or file a Contract Request if the map is preferred).
-6. **Two judgment calls you may want to overrule** (both in `session-state.md` → Key Decisions): a draft save after submit returns `409 ANSWER_LOCKED`; and `flagged` is preserved by querying the `anomalies` table (which already exists) rather than always writing `marked`.
+Same sandbox limitation as the 5.1 and 5.2 sessions: **no internet access, no fastapi/sqlalchemy/pytest/psycopg installed, no Postgres.** This step has one additional, more serious risk on top of that:
 
-## Why 6.1 Was Not Started
+- ⚠️ **The Pinecone REST integration (`pinecone_store.py`) has never made a real network call, and its exact request/response contract could not be checked against live Pinecone documentation.** The header names (`X-Pinecone-API-Version`, `Api-Key`) and the control-plane `describe_index` → `host` field are written from training-data knowledge and may be stale. If wrong, the practical effect is **not a crash** — every call is wrapped so a failure raises `RagError`, which the evaluator catches and turns into a graceful `REFERENCE_UNAVAILABLE` fallback to standard mode. So the app stays safe either way, but reference-grounded evaluation may silently never actually retrieve anything until someone verifies this against a real Pinecone index with real credentials.
+- ⚠️ **OpenAI embeddings likewise never made a real call.** Same fail-safe wrapping applies.
+- ✅ **What WAS verified by actual execution:** the text splitter (`splitter.py`) — 7 assertions, run directly with plain `python3`, all passed. It has zero framework/network dependencies.
+- ✅ **What was checked statically:** every file compiles (`py_compile`), and every cross-reference (model fields, existing service patterns, the `job_runner.submit_job` signature, `StorageService` interface) was manually verified against the actual code already in this repo.
+- ⚠️ **`test_reference.py` (10 tests) was written to the same style as `test_evaluation.py`/`test_marking.py`** — both of which the previous session confirmed passing for real (62/62) — but has itself never been run.
 
-`instruction.md` §8 (one step per session) plus "when in doubt, stop earlier". 6.1 needs new dependencies (`pinecone`, a LangChain text-splitter, an embedding-provider client) and can't be exercised against real Pinecone/embedding APIs from the sandbox — only against fakes. That's the half-verified second phase the task said to avoid, and the sandbox wasn't a clean single-writer environment. A clean, verified 5.2 is the better checkpoint.
+**Before starting step 7.1, please: run `python -m pytest tests/ -v` in a real environment, and — if you have a spare few minutes — put real `OPENAI_API_KEY` and `PINECONE_API_KEY` values in `.env`, upload one small reference document through the UI or API, and check whether `reference_documents.status` actually reaches `indexed` rather than `failed`. That single manual check would resolve the biggest open risk in this codebase right now.**
 
-## Exact Next Action
+---
 
-**Step 6.1 — Pinecone indexer + retriever + fallback (backend), per `ai-pipeline.md` §6.** Before starting: confirm `app/core/storage/` is committed; state explicitly which packages are being added to `requirements.txt`; keep standard mode fully independent of Pinecone; never index student answers. The `REFERENCE_UNAVAILABLE` fallback in `evaluator_service.py` is where retrieval plugs in. (Step 5.3 is a frontend step — its backend prerequisites V1/V3/M1/M2 are all done.)
+## Exact Next Action for the Next Session
+
+**Step 7.1 — Anomaly detectors + runner (backend).** Full detail (files, detector list, structure) is in `session-state.md`'s "Exact Next Step" section. In short: pure-function detectors for the 6 MVP anomaly types, a runner that upserts `anomalies` rows idempotently via `dedupe_key`, and the AN1/AN2/AN3 endpoints. Also worth resolving alongside it: **V2 (batch AI evaluation)** is still not built from step 5.1 — it's a natural fit to add here since both are background-job patterns.
 
 ## What Must NOT Be Repeated
 
-- Don't redo 0.1–5.2. Don't reimplement `is_stale()`, the evaluation upsert, or the guards.
-- Don't jump to anomalies (7.x) or moderation (8.x).
-- Don't touch frontend files; don't add the `anthropic`/`google-generativeai` SDKs.
-- Run tests with `python -m pytest tests/ -v`.
+- Don't redo 0.1 through 6.1 — all done.
+- Don't jump to moderation (8.x), results/analytics (9.x), or anything past 7.1/V2.
+- Don't add the `pinecone` or `openai` SDKs — keep the httpx-direct pattern, unless a real test run proves it's genuinely necessary.
+- Don't touch frontend files.
+- Don't skip running the actual test suite before building anomaly detection on top of this step's (unverified-live) evaluator changes.
+- Don't assume the Pinecone integration "works" just because it compiles and the tests-as-written would pass with fakes — it has never touched a real Pinecone instance. Verify with real credentials if at all possible.

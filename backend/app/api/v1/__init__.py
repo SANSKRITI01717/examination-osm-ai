@@ -10,6 +10,7 @@ from app.api.v1.exams import router as exams_router
 from app.api.v1.marking import router as marking_router
 from app.api.v1.ocr import router as ocr_router
 from app.api.v1.questions import router as questions_router
+from app.api.v1.reference import router as reference_router
 from app.api.v1.sheets import router as sheets_router
 from app.api.v1.students import router as students_router
 from app.api.v1.users import router as users_router
@@ -25,5 +26,6 @@ api_v1_router.include_router(ocr_router)
 api_v1_router.include_router(answers_router)
 api_v1_router.include_router(evaluation_router)
 api_v1_router.include_router(marking_router)
+api_v1_router.include_router(reference_router)
 
 

@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     EMBEDDING_PROVIDER: str = ""
     EMBEDDING_MODEL: str = ""
     EMBEDDING_DIM: int = 1536
+    OPENAI_API_KEY: str = ""
     PINECONE_API_KEY: str = ""
     PINECONE_INDEX: str = "exam-references"
 
