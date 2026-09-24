@@ -136,9 +136,16 @@ export const apiClient = {
     return fetchWithAuth(`/api/v1/exams/${examId}/answer-sheets`)
   },
 
-  async uploadSheet(examId: number, studentId: number, pageCount?: number): Promise<AnswerSheet> {
-    if (USE_MOCK) return mockService.uploadSheet(examId, studentId, pageCount)
-    return fetchWithAuth(`/api/v1/exams/${examId}/answer-sheets`, { method: 'POST', body: JSON.stringify({ student_id: studentId }) })
+  async uploadSheet(examId: number, studentId: number, filesOrCount?: File[] | File | number): Promise<AnswerSheet> {
+    if (USE_MOCK) return mockService.uploadSheet(examId, studentId, typeof filesOrCount === 'number' ? filesOrCount : 3)
+    const formData = new FormData()
+    formData.append('student_id', String(studentId))
+    if (Array.isArray(filesOrCount)) {
+      filesOrCount.forEach(f => formData.append('files', f))
+    } else if (filesOrCount instanceof File) {
+      formData.append('files', filesOrCount)
+    }
+    return fetchWithAuth(`/api/v1/exams/${examId}/answer-sheets`, { method: 'POST', body: formData })
   },
 
   async getSheetDetail(sheetId: number): Promise<AnswerSheetDetail> {
@@ -157,15 +164,35 @@ export const apiClient = {
   },
 
   // Answers & Workspace
-  async getAnswers(params: { exam_id: number; marking_status?: string; ocr_review_required?: boolean }): Promise<{ items: AnswerRow[]; total: number }> {
+  async getAnswers(params: {
+    exam_id: number
+    sheet_id?: number
+    question_id?: number
+    marking_status?: string
+    assigned_to?: string
+    ocr_review_required?: boolean
+    page?: number
+    page_size?: number
+  }): Promise<{ items: AnswerRow[]; total: number; page?: number; page_size?: number }> {
     if (USE_MOCK) return mockService.getAnswers(params)
-    const query = new URLSearchParams(params as any).toString()
+    const cleanedParams: Record<string, string> = {}
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') {
+        cleanedParams[k] = String(v)
+      }
+    })
+    const query = new URLSearchParams(cleanedParams).toString()
     return fetchWithAuth(`/api/v1/answers?${query}`)
   },
 
   async getAnswerDetail(id: number): Promise<AnswerDetail> {
     if (USE_MOCK) return mockService.getAnswerDetail(id)
     return fetchWithAuth(`/api/v1/answers/${id}`)
+  },
+
+  async rerunSingleOcr(id: number): Promise<{ queued: number }> {
+    if (USE_MOCK) return mockService.rerunSingleOcr(id)
+    return fetchWithAuth(`/api/v1/answers/${id}/ocr`, { method: 'POST' })
   },
 
   async updateAnswerText(id: number, data: { verified_text?: string; ocr_verified?: boolean }): Promise<any> {
@@ -312,7 +339,9 @@ export const apiClient = {
 async function fetchWithAuth(url: string, init?: RequestInit) {
   const token = localStorage.getItem('token')
   const headers = new Headers(init?.headers || {})
-  headers.set('Content-Type', 'application/json')
+  if (!(init?.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json')
+  }
   if (token) {
     headers.set('Authorization', `Bearer ${token}`)
   }

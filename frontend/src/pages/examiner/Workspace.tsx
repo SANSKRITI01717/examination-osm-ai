@@ -45,6 +45,16 @@ export const Workspace: React.FC = () => {
     onError: err => errorToast(err),
   })
 
+  // Re-run single answer OCR (O2)
+  const rerunOcrMutation = useMutation({
+    mutationFn: () => apiClient.rerunSingleOcr(answerId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['answerDetail', answerId] })
+      toast('OCR re-processing queued for this answer', 'success')
+    },
+    onError: err => errorToast(err),
+  })
+
   // Run AI evaluation (V1)
   const runAiMutation = useMutation({
     mutationFn: () => apiClient.runAiEvaluation(answerId),
@@ -196,6 +206,10 @@ export const Workspace: React.FC = () => {
             onSaveText={async (text, verify) => {
               await saveTextMutation.mutateAsync({ verified_text: text, ocr_verified: verify })
             }}
+            onRerunOcr={async () => {
+              await rerunOcrMutation.mutateAsync()
+            }}
+            isRerunningOcr={rerunOcrMutation.isPending}
           />
 
           <AiSuggestionPanel
@@ -267,6 +281,10 @@ export const Workspace: React.FC = () => {
                 onSaveText={async (text, verify) => {
                   await saveTextMutation.mutateAsync({ verified_text: text, ocr_verified: verify })
                 }}
+                onRerunOcr={async () => {
+                  await rerunOcrMutation.mutateAsync()
+                }}
+                isRerunningOcr={rerunOcrMutation.isPending}
               />
             </div>
           )}

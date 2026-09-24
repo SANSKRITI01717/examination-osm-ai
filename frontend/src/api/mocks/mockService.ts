@@ -439,15 +439,38 @@ export const mockService = {
   },
 
   // Answers & Workspace
-  async getAnswers(params: { exam_id: number; marking_status?: string; ocr_review_required?: boolean }): Promise<{ items: AnswerRow[]; total: number; page: number; page_size: number }> {
+  async getAnswers(params: {
+    exam_id: number
+    sheet_id?: number
+    question_id?: number
+    marking_status?: string
+    assigned_to?: string
+    ocr_review_required?: boolean
+    page?: number
+    page_size?: number
+  }): Promise<{ items: AnswerRow[]; total: number; page: number; page_size: number }> {
     let list = state.answers.filter(a => a.exam_id === Number(params.exam_id))
-    if (params.marking_status) {
+    if (params.sheet_id) {
+      const sheet = state.sheets.find(s => s.id === Number(params.sheet_id))
+      if (sheet) {
+        list = list.filter(a => a.anon_code === sheet.anon_code)
+      }
+    }
+    if (params.question_id) {
+      list = list.filter(a => a.question.id === Number(params.question_id))
+    }
+    if (params.marking_status && params.marking_status !== 'all') {
       list = list.filter(a => a.marking_status === params.marking_status)
     }
     if (params.ocr_review_required) {
       list = list.filter(a => a.ocr.review_required && !a.ocr.verified)
     }
-    const rows: AnswerRow[] = list.map(a => ({
+    const page = Number(params.page) || 1
+    const pageSize = Number(params.page_size) || 25
+    const total = list.length
+    const start = (page - 1) * pageSize
+    const paginated = list.slice(start, start + pageSize)
+    const rows: AnswerRow[] = paginated.map(a => ({
       id: a.id,
       anon_code: a.anon_code,
       question_number: a.question.question_number,
@@ -458,13 +481,22 @@ export const mockService = {
       final_marks: a.final_marks,
       max_marks: a.question.max_marks,
     }))
-    return { items: rows, total: rows.length, page: 1, page_size: 50 }
+    return { items: rows, total, page, page_size: pageSize }
   },
 
   async getAnswerDetail(id: number): Promise<AnswerDetail> {
     const answer = state.answers.find(a => a.id === Number(id))
     if (!answer) throw { error: { code: 'NOT_FOUND', message: 'Answer not found' } }
     return answer
+  },
+
+  async rerunSingleOcr(id: number): Promise<{ queued: number }> {
+    const answer = state.answers.find(a => a.id === Number(id))
+    if (!answer) throw { error: { code: 'NOT_FOUND', message: 'Answer not found' } }
+    answer.ocr.status = 'done'
+    answer.ocr.verified = false
+    persist()
+    return { queued: 1 }
   },
 
   async updateAnswerText(id: number, data: { verified_text?: string; ocr_verified?: boolean }): Promise<any> {

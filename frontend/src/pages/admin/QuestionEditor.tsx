@@ -35,18 +35,19 @@ export const QuestionEditor: React.FC = () => {
     queryFn: () => apiClient.getQuestions(examId),
   })
 
-  // Select first question by default
-  React.useEffect(() => {
-    if (questions.length > 0 && !selectedQuestion) {
-      handleSelectQuestion(questions[0])
-    }
-  }, [questions])
-
   const handleSelectQuestion = (q: Question) => {
     setSelectedQuestion(q)
     setCriteria(q.rubric?.criteria ? [...q.rubric.criteria] : [])
     setGuidance(q.rubric?.guidance || '')
   }
+
+  // Select first question by default
+  React.useEffect(() => {
+    if (questions.length > 0 && !selectedQuestion) {
+      handleSelectQuestion(questions[0])
+    }
+  }, [questions, selectedQuestion])
+
 
   const createQuestionMutation = useMutation({
     mutationFn: () =>

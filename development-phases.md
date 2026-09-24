@@ -33,17 +33,17 @@ Frontend can run ahead of the backend by one phase using mocks. **Freeze rule:**
 
 ## 3. Progress checklist (tick at the end of each session)
 
-- [ ] 0.1 Backend skeleton + DB + Alembic
-- [ ] 0.2 Models + first migration
-- [ ] 0.3 Frontend skeleton + mock layer + type generation
-- [ ] 1.1 Auth/RBAC backend
-- [ ] 1.2 Login + guards + users UI
-- [ ] 2.1 Exams/questions/rubrics backend
-- [ ] 2.2 Exam + rubric editor UI
-- [ ] 3.1 Storage + upload + mapping + assignment backend
-- [ ] 3.2 Upload + mapping + assignment UI
-- [ ] 4.1 OCR adapter + preprocessing + confidence + job runner
-- [ ] 4.2 Processing screen + answer list + OCR panel
+- [x] 0.1 Backend skeleton + DB + Alembic
+- [x] 0.2 Models + first migration
+- [x] 0.3 Frontend skeleton + mock layer + type generation
+- [x] 1.1 Auth/RBAC backend
+- [x] 1.2 Login + guards + users UI
+- [x] 2.1 Exams/questions/rubrics backend
+- [x] 2.2 Exam + rubric editor UI
+- [x] 3.1 Storage + upload + mapping + assignment backend
+- [x] 3.2 Upload + mapping + assignment UI
+- [x] 4.1 OCR adapter + preprocessing + confidence + job runner
+- [x] 4.2 Processing screen + answer list + OCR panel
 - [ ] 5.1 Evaluator + validator + LLM client
 - [ ] 5.2 Marking service + guards
 - [ ] 5.3 Workspace AI panel + marking panel
@@ -58,7 +58,9 @@ Frontend can run ahead of the backend by one phase using mocks. **Freeze rule:**
 - [ ] 10.1 Seed/demo data
 - [ ] 10.2 Deploy + mobile pass + smoke test
 
-**Next session should start with:** (update at the end of each session)
+**Next session should start with: step 5.1 — Evaluator + validator + LLM client (backend).**
+Claude builds the LLMClient adapter, evaluator service, Pydantic response validator with 1 retry repair, prompt templates, and standard evaluation endpoint.
+
 
 ## 4. Demo script (target for phase 10)
 

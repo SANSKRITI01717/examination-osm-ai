@@ -17,6 +17,7 @@ export const SheetUpload: React.FC = () => {
 
   const [selectedStudentId, setSelectedStudentId] = useState<number>(101)
   const [pageCount, setPageCount] = useState<string>('3')
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
 
   const { data: sheetsData, isLoading: sheetsLoading } = useQuery({
     queryKey: ['sheets', examId],
@@ -28,11 +29,25 @@ export const SheetUpload: React.FC = () => {
     queryFn: () => apiClient.getStudents(),
   })
 
+  React.useEffect(() => {
+    if (studentsData?.items && studentsData.items.length > 0) {
+      if (!studentsData.items.some(s => s.id === selectedStudentId)) {
+        setSelectedStudentId(studentsData.items[0].id)
+      }
+    }
+  }, [studentsData, selectedStudentId])
+
   const uploadMutation = useMutation({
-    mutationFn: () => apiClient.uploadSheet(examId, selectedStudentId, parseInt(pageCount) || 3),
+    mutationFn: () =>
+      apiClient.uploadSheet(
+        examId,
+        selectedStudentId,
+        selectedFiles.length > 0 ? selectedFiles : parseInt(pageCount) || 3
+      ),
     onSuccess: (newSheet: any) => {
       queryClient.invalidateQueries({ queryKey: ['sheets', examId] })
       toast(`Answer script uploaded! Generated anonymous code: ${newSheet.anon_code}`, 'success')
+      setSelectedFiles([])
     },
     onError: err => errorToast(err),
   })
@@ -88,7 +103,20 @@ export const SheetUpload: React.FC = () => {
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
                   Scan Document (PDF / JPEG / PNG)
                 </label>
-                <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center hover:border-indigo-500 transition-colors bg-slate-50/50 cursor-pointer">
+                <label className="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center hover:border-indigo-500 transition-colors bg-slate-50/50 cursor-pointer block">
+                  <input
+                    type="file"
+                    multiple
+                    accept=".pdf,image/jpeg,image/png"
+                    className="hidden"
+                    onChange={e => {
+                      if (e.target.files) {
+                        const filesArr = Array.from(e.target.files)
+                        setSelectedFiles(filesArr)
+                        setPageCount(String(filesArr.length))
+                      }
+                    }}
+                  />
                   <svg
                     className="mx-auto h-8 w-8 text-slate-400"
                     fill="none"
@@ -103,10 +131,12 @@ export const SheetUpload: React.FC = () => {
                     />
                   </svg>
                   <p className="mt-2 text-xs text-slate-600 font-medium">
-                    Upload handwritten script scan
+                    {selectedFiles.length > 0
+                      ? `${selectedFiles.length} file(s) selected: ${selectedFiles.map(f => f.name).join(', ')}`
+                      : 'Click or drop handwritten script scan here'}
                   </p>
-                  <p className="text-[11px] text-slate-400">PDF will be split into page images automatically</p>
-                </div>
+                  <p className="text-[11px] text-slate-400">PDF will be split into page images automatically (Max 15MB)</p>
+                </label>
               </div>
 
               <Button

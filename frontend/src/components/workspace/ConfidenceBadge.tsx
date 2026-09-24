@@ -1,11 +1,20 @@
 import React from 'react'
 
 interface ConfidenceBadgeProps {
-  confidence: number // 0 to 1
+  confidence?: number | null // 0 to 1
   label?: string
 }
 
 export const ConfidenceBadge: React.FC<ConfidenceBadgeProps> = ({ confidence, label = 'Confidence' }) => {
+  if (confidence === null || confidence === undefined) {
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-slate-50 text-slate-500 border-slate-200">
+        <span className="w-1.5 h-1.5 rounded-full mr-1.5 bg-slate-400" />
+        {label} N/A
+      </span>
+    )
+  }
+
   const pct = Math.round(confidence * 100)
 
   let colorStyle = 'bg-emerald-50 text-emerald-700 border-emerald-300'

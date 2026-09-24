@@ -246,7 +246,7 @@ export interface AnswerDetail {
     status: OcrStatus
     text: string
     verified_text: string | null
-    confidence: number
+    confidence: number | null
     review_required: boolean
     verified: boolean
   }
