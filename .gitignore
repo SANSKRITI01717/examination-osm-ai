@@ -48,7 +48,7 @@ frontend/node_modules/
 .eslintcache
 
 # Local File Storage / Artifacts
-storage/
+ /storage/
 backend/storage/
 uploads/
 *.log
