@@ -166,6 +166,17 @@ Retrieval during evaluation is internal to V1/V2 and is **not** exposed to exami
 
 Rules: submitting sets `answers.final_marks = marks_awarded`, `final_source = examiner`, `marking_status = marked` (or stays `flagged` if an open anomaly exists). `source = ai_modified` requires `ai_evaluation_id`. Re-submission is allowed while the exam is in `evaluation`.
 
+**Implementation notes (step 5.2 — behaviour the rules above leave open)**
+
+- `active_seconds` (M1, M2) and `submit` (M2) are required. `comment`, `criterion_marks`, `ai_evaluation_id` are optional.
+- `criterion_marks` is a **list** `[{"criterion_id": "c1", "awarded_marks": 2}]`, matching `database-schema.md` (not an `{id: marks}` map). Each id must exist in the rubric, appear once, and be `0..criterion.max_marks`. Their sum must equal `marks_awarded` (`422 CRITERIA_SUM_MISMATCH`). M1 stores the AI suggestion's per-criterion marks the same way.
+- Marks (total and per criterion) must be in 0.5 steps. Out of range → `422 MARKS_OUT_OF_RANGE`; wrong step, unknown/duplicate criterion, or `ai_modified` without `ai_evaluation_id` → `422 VALIDATION_ERROR`. `source` accepts only `ai_modified` or `manual`; `ai_accepted` is reachable only through M1.
+- `ai_evaluation_id` must belong to the same answer, otherwise `404 NOT_FOUND`.
+- Only the assigned examiner may call M1/M2 (admin and moderator get `403`). Both need the exam in `evaluation` and the answer not `moderated`, otherwise `409 ANSWER_LOCKED`.
+- M2 with `submit=false` saves a draft and never touches `answers.final_marks`. Once an evaluation is `submitted`, a further `submit=false` call returns `409 ANSWER_LOCKED` (`details.reason = ALREADY_SUBMITTED`); change submitted marks by calling M2/M1 again with the new values and `submit=true`.
+- Both use the single evaluation row per answer; the placeholder draft that N2 creates on first open is reused.
+- M1 guard order: 404 → 403 → `ANSWER_LOCKED` → 404 (foreign `ai_evaluation_id`) → `OCR_NOT_VERIFIED` → `AI_EVAL_STALE`. `OCR_NOT_VERIFIED` applies to M1 only (invariant 8); `ai_modified` and `manual` stay available while OCR is unverified.
+
 ## 13. Moderation
 
 | ID | Method Path | Purpose | Auth | Request | Response | Specific errors |

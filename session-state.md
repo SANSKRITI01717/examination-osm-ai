@@ -4,68 +4,94 @@
 
 | Field | Value |
 |---|---|
-| Phase / Step | Phase 5 / Step 5.1 |
-| Status | ✅ COMPLETE |
-| Last completed step | 5.1 Evaluator + validator + LLM client (backend) |
-| Agent | Claude (backend implementation for this step, per updated ownership in instruction.md) |
+| Phase / Step | Phase 5 / Step 5.2 |
+| Status | ✅ COMPLETE — implemented, wired, and tested (62/62 passing in the sandbox) |
+| Last completed step | 5.2 Marking service + guards (backend) |
+| Agent | Claude (backend) |
+| Stopped at | 5.2. Step 6.1 was **not started** (reasons below) |
 
-## Files Created / Changed
+## Files Created / Changed (paths relative to repo root)
 
 | File | Action |
 |---|---|
-| `backend/app/ai/llm/base.py` | Created — `LLMClient` ABC, `LLMResult` dataclass, `LLMError` |
-| `backend/app/ai/llm/anthropic_client.py` | Created — Anthropic Messages API client via `httpx` directly (no new dependency added) |
-| `backend/app/ai/llm/prompts.py` | Created — System prompt + user prompt builder (`eval_v1`) + repair-prompt builder, per ai-pipeline.md §7 |
-| `backend/app/ai/llm/validator.py` | Created — Pure-Python validation of LLM JSON output against a rubric; `compute_input_hash` / `is_stale` for invariant 7 |
-| `backend/app/ai/llm/__init__.py` | Created — `get_llm_client()` factory, mirrors `app/ai/ocr/__init__.py` |
-| `backend/app/schemas/evaluation.py` | Created — Pydantic schemas for V1/V3 |
-| `backend/app/services/evaluator_service.py` | Created — `run_ai_evaluation()` (V1) and `list_ai_evaluations()` (V3): mode selection, prompt build, LLM call, validation with 1 repair retry, confidence/warnings computation, immutable `AIEvaluation` row |
-| `backend/app/api/v1/evaluation.py` | Created — Router for V1 `POST /answers/{id}/ai-evaluation` and V3 `GET /answers/{id}/ai-evaluations` |
-| `backend/app/api/v1/__init__.py` | Updated — Wired `evaluation_router` into `api_v1_router` |
-| `backend/app/services/answer_service.py` | Updated — N2 workspace payload's `ai.latest.stale` now uses the real `is_stale()` check instead of a hardcoded `False` |
-| `backend/tests/test_evaluation.py` | Created — Integration tests for V1/V3 using a `FakeLLMClient` (no real API key needed): no-text guard, forbidden-examiner guard, successful evaluation, stale-after-edit, invalid-output-after-repair-retry, reference_grounded fallback |
+| `backend/app/services/marking_service.py` | Created — `accept_ai()` (M1), `save_or_submit()` (M2), guards, marks/criterion validation. With the future ModerationService, the only writer of `answers.final_marks` |
+| `backend/app/schemas/marking.py` | Created — `AcceptAIRequest`, `SaveMarksRequest`, `CriterionMarkInput`, `EvaluationResponse` |
+| `backend/app/api/v1/marking.py` | Created — `POST /answers/{id}/evaluation/accept-ai` (M1), `PUT /answers/{id}/evaluation` (M2); examiner only |
+| `backend/app/api/v1/__init__.py` | Modified — wired `marking_router` (one import, one `include_router`) |
+| `backend/tests/test_marking.py` | Created — 20 integration tests (FakeLLMClient; each test builds its own answer) |
+| `backend/openapi.json` | Re-exported. Additive vs the uploaded ZIP: +4 paths (V1, V3, M1, M2 — the ZIP's copy predated even 5.1), +9 schemas, nothing existing changed or removed |
+| `api-spec.md` | Modified — "Implementation notes (step 5.2)" under §12 for behaviour the original rules left open |
+| `development-phases.md` | Modified — 5.2 ticked; next-session pointer + open items |
+| `session-state.md`, `handoff.md` | Modified (this file) |
 
-## Tests & Checks Run
+No frontend files touched. No new dependencies (`requirements.txt` byte-identical to the ZIP's). No model/migration/schema changes.
+
+## Provenance note — read this
+
+When this session began, the sandbox working directory already contained `marking_service.py`, `schemas/marking.py`, `api/v1/marking.py` and `tests/test_marking.py`, which are **not in the uploaded ZIP** (file timestamps were minutes after the ZIP was extracted; I did not write them). The router was not wired, so 18 of the 20 marking tests returned 404. During the session, other edits to the working tree also appeared that I did not make (a second copy of the router import/`include_router` in `__init__.py`, a regenerated `openapi.json`, an `api-spec.md` note, and rewritten tracking docs). I did not assume any of it was correct. I:
+
+1. read all four marking files in full and checked them against `api-spec.md` §12, `database-schema.md` invariants and the 5.1 code they call;
+2. removed the duplicated router wiring (verified: exactly one import and one `include_router`; 36 OpenAPI operations, no duplicate operation IDs);
+3. merged two overlapping api-spec notes into one;
+4. re-verified every factual claim in the rewritten tracking docs and replaced the ones I could not substantiate (this file and `handoff.md` are the result).
+
+If the owner did not expect those files to appear, treat them as a reviewed-and-tested implementation, not as something written from scratch in one pass.
+
+## Tests & Checks Run (real execution, this session)
+
+Environment: Linux sandbox, Python 3.12, PostgreSQL 16.15 (already installed; the `examination_osm` DB already existed; I ran `alembic upgrade head`), `pip install -r requirements.txt` → FastAPI 0.141.1, Starlette 1.7.0, Pydantic 2.13.5, SQLAlchemy 2.0.54, pytest 9.1.1.
 
 | Check | Result |
 |---|---|
-| `python3 -m py_compile` on all 10 new/changed backend files | ✅ PASS — all compile cleanly |
-| Standalone execution of `validator.py`'s core logic (14 hand-written assertions covering: valid response, unknown criterion, out-of-range marks, missing criterion, non-JSON, non-0.5-step marks, LLM-supplied total ignored in favour of backend-computed sum, duplicate criterion id, input-hash determinism and change-detection) | ✅ PASS — all 14 assertions passed, executed directly in this session |
-| `pytest tests/test_evaluation.py` (the new integration test file, against a live Postgres DB) | ⚠️ **NOT RUN HERE** — this sandbox has no internet access and does not have fastapi/sqlalchemy/psycopg/pytest installed, and no Postgres instance. The test file is written to match the exact style/fixtures of the existing, previously-passing `tests/test_ocr.py`. **Run `pytest backend/tests/test_evaluation.py -v` in a real environment before trusting this step further.** |
-| `pytest` full existing suite (`test_auth.py`, `test_ocr.py`, etc.) to confirm no regression | ⚠️ **NOT RUN HERE** — same environment limitation. The only file that touches pre-existing behaviour is `answer_service.py` (the `ai.latest.stale` field), which is additive (computed value replacing a hardcoded one) and does not change any other field, route, or status code. |
+| `python -m pytest tests/ -q` on a **pristine extract of the uploaded ZIP** (+ sandbox storage stand-in, see caveat) | ✅ **42 passed** — independently reproduces the owner's 42/42 |
+| `python -m pytest tests/ -v` with the marking files present but router **not** wired | ❌ 44 passed, 18 failed (all `test_marking.py`, 404s) — this is what wiring fixed |
+| `python -m pytest tests/ -v` after wiring | ✅ **62 passed, 0 failed** (42 old + 20 new) |
+| Same, after removing the duplicated router lines | ✅ **62 passed, 0 failed** |
+| Mutation check on `marking_service.py` (7 mutants: drop OCR guard / stale guard / criterion-sum check / range check / ownership check / `ai_modified` id requirement; let a draft write `final_marks`) | ✅ **7/7 caught**, each by the test written for it. File restored; md5 identical before and after |
 
-## Key Decisions
+**Sandbox caveat:** the ZIP is missing `backend/app/core/storage/` (see Blockers). To run anything I used a throwaway local-disk stand-in (files marked `SANDBOX STAND-IN`). It is **not part of the deliverables**. The 5.2 code never touches storage, so this does not weaken the 5.2 results. **Not run on Windows** — the owner should re-run `python -m pytest tests/ -v` locally (my run used a newer FastAPI than the owner's may have).
+
+## Behaviour implemented (5.2)
+
+- **M1 accept-ai**: examiner only and must be the assigned examiner (else 403); exam must be `evaluation` and answer not `moderated` (`ANSWER_LOCKED`); `ai_evaluation_id` must belong to the answer (404); `OCR_NOT_VERIFIED` if `ocr_review_required and not ocr_verified`; `AI_EVAL_STALE` via the existing `is_stale()`. Writes a submitted evaluation (`ai_accepted`, marks = AI `suggested_marks`, AI per-criterion marks stored as `criterion_marks`), then `answers.final_marks`, `final_source="examiner"`, `marking_status`.
+- **M2 save/submit**: `source` ∈ {`ai_modified`,`manual`} (`ai_accepted` only via M1, so its guards can't be bypassed); `ai_modified` needs `ai_evaluation_id`; `MARKS_OUT_OF_RANGE` / `CRITERIA_SUM_MISMATCH` (Decimal arithmetic, no float drift); 0.5 steps enforced. `submit=false` saves a draft and never touches `final_marks`.
+- OCR-unverified answers can still be marked via M2 (invariant 8 only blocks accept-ai) — tested.
+- The N2 placeholder draft evaluation (created on first open) is reused: exactly one `evaluations` row per answer — tested.
+- Running V1 alone never writes `final_marks`, and `ai_evaluations` rows are untouched by marking — tested.
+
+## Key Decisions (new this session)
 
 | Decision | Reason |
 |---|---|
-| Anthropic client calls the API directly via `httpx` rather than adding the `anthropic` SDK | `httpx` is already a dependency (requirements.txt); avoids adding a new library per instruction.md §9 anti-overengineering rule |
-| `LLM_PROVIDER=gemini` is **not** implemented — `get_llm_client()` always returns `AnthropicClient` regardless of the env var | Time-boxed to one provider for this step; the adapter interface (`LLMClient`) already supports adding `GeminiClient` later without touching the evaluator or router |
-| A `reference_grounded` question falls back to standard mode with warning `REFERENCE_UNAVAILABLE` | Pinecone/retrieval doesn't exist yet (Phase 6). This is the documented fallback behaviour in ai-pipeline.md §6 step 4, not new scope — it means reference_grounded questions are usable (in degraded form) before Phase 6 lands |
-| V1 is synchronous (no batch job runner) | Matches api-spec.md V1 exactly ("synchronous, ≈5–20s"). Batch AI evaluation (V2) is explicitly deferred to step 5.2/later — not built in this step |
-| `answers.final_marks` is **not** touched anywhere in this step | Invariant 5 — only `marking_service` (5.2, not yet built) and `moderation_service` (8.1) may write it |
-| Updated `answer_service.py`'s hardcoded `"stale": False` to a real check | Same feature (`ai_evaluations` staleness) the previous session's own "Exact Next Step" note explicitly listed as part of 5.1 ("saving to AIEvaluation with stale tracking") |
+| `marking_status` after submit is `flagged` if an **open anomaly row exists**, else `marked` | api-spec §12 says exactly this and the `Anomaly` model/table already exists. The previous session-state suggested "always `marked`" because detection isn't built; querying the table is correct now (no rows → `marked`) and needs no change in Phase 7. Tested with a hand-inserted anomaly. |
+| `criterion_marks` is a **list** `[{criterion_id, awarded_marks}]` | Locked `database-schema.md`. The mock frontend sends a map — flagged for 5.3. |
+| `active_seconds` and `submit` are **required** | A silent default of 0 would create false TOO_FAST flags later. |
+| Non-0.5-step marks → `422 VALIDATION_ERROR` | Spec says 0.5 steps but has no dedicated code; reused the existing generic code rather than invent one. |
+| `submit=false` on an already-submitted evaluation → `409 ANSWER_LOCKED` (`details.reason=ALREADY_SUBMITTED`) | A draft save would change the evaluation but leave `answers.final_marks` on the old value. Re-submitting is the supported way to change marks. Not in the spec — owner may overrule. |
+| Guard order: 404 → 403 → 409 locked | Don't reveal exam state to callers who can't act on the answer. |
+| Admin/moderator cannot call M1/M2 (403) | Spec auth column is `E*` only. |
 
-## Blockers
+## Why 6.1 was NOT started
 
-- **No live test execution possible in this session's environment** — no internet access, no Python packages beyond the standard library + PyJWT/Pillow, no Postgres. All code is syntax-checked and carefully cross-referenced against the actual existing models/services/patterns already in the repo, and the pure-logic validator was executed and verified directly, but the full integration test suite has **not** been run against a real database. Treat this step as "implemented and self-consistent, pending a real test run" rather than "verified passing."
-- `LLM_PROVIDER=gemini` path is a stub — only Anthropic works right now.
+`instruction.md` §8 (one step per session) plus "when in doubt, stop earlier":
+1. 6.1 needs new dependencies (`pinecone`, a LangChain text-splitter package) and an embeddings provider (`.env.example` says `openai`, with no client or key path in the repo). None can be exercised against real services from this sandbox — only against fakes. That is the half-verified second phase the task said to avoid.
+2. The sandbox was not a clean, single-writer environment (see Provenance note), and a meaningful part of the session went on establishing what was actually true. A single verified phase is the better checkpoint.
+
+## Blockers / Open Items
+
+- 🔴 **`backend/app/core/storage/` is not in the ZIP.** `.gitignore` line 51 `storage/` also matches this Python package, so git never tracked it. A fresh clone fails at import (`ModuleNotFoundError: app.core.storage`). Not changed here (`.gitignore` isn't an owned file). Owner should anchor the ignore rules (`/storage/`, `/backend/storage/`) and commit the package.
+- 🟡 **V2 (batch AI evaluation, `POST /exams/{id}/ai-evaluation/run`) is unbuilt** and not assigned to any checklist step.
+- 🟡 **Frontend contract mismatch for 5.3:** `MarkingPanel.tsx` (lines 16, 92, 121) and `types.ts` (line 198) use `criterion_marks: Record<string, number>`; backend/schema use a list.
+- 🟡 `LLM_PROVIDER=gemini` is still a stub (unchanged from 5.1).
+- ℹ️ Answers mapped with `is_attempted=false` are pre-filled by the mapping service with `final_source="system"` (see `sheet_service.py` ~line 427–429). M1/M2 don't special-case them (an examiner could overwrite that 0). The spec is silent; left as is.
 
 ## Exact Next Step
 
-**Step 5.2 — Marking service + guards (backend)**
-
-1. `backend/app/services/marking_service.py`:
-   - `accept_ai(db, answer_id, user, ai_evaluation_id, active_seconds)` → M1. Refuse if `ocr_review_required and not ocr_verified` (`OCR_NOT_VERIFIED`, 409) or if `is_stale(...)` on the referenced `ai_evaluation_id` is true (`AI_EVAL_STALE`, 409). On success: create/update `evaluations` row with `source="ai_accepted"`, `marks_awarded` = the AI evaluation's `suggested_marks`, `status="submitted"`, `submitted_at=now()`; set `answers.final_marks`, `final_source="examiner"`, `marking_status="marked"` (or keep `"flagged"` if an open anomaly already exists — anomalies aren't built yet in this repo, so for now always set `"marked"`).
-   - `save_or_submit(db, answer_id, user, marks_awarded, criterion_marks, comment, source, ai_evaluation_id, active_seconds, submit)` → M2. Validate `0 ≤ marks_awarded ≤ question.max_marks` (`MARKS_OUT_OF_RANGE`, 422) and, if `criterion_marks` given, that it sums to `marks_awarded` (`CRITERIA_SUM_MISMATCH`, 422). `source="ai_modified"` requires `ai_evaluation_id`. Same `ANSWER_LOCKED`/assignment-ownership guard pattern as `ocr_service.py`/`evaluator_service.py`.
-2. `backend/app/schemas/marking.py`: request/response schemas for M1/M2 per api-spec.md §12.
-3. `backend/app/api/v1/marking.py`: router for `POST /answers/{id}/evaluation/accept-ai` and `PUT /answers/{id}/evaluation`. Wire into `app/api/v1/__init__.py`.
-4. `backend/tests/test_marking.py`: cover accept-ai success, OCR-not-verified guard, stale-AI guard, manual marks out-of-range, criterion-sum mismatch, ai_modified without ai_evaluation_id rejected, assignment/ownership checks, and that `final_marks`/`final_source`/`marking_status` end up correct in the DB.
+**Step 6.1 — Pinecone indexer + retriever + fallback (backend), per `ai-pipeline.md` §6.** Before starting: (a) confirm `app/core/storage/` exists in the working tree and is committed; (b) say explicitly that `pinecone`, a LangChain splitter package and the embedding-provider client are being added to `requirements.txt`; (c) keep standard-mode evaluation independent of Pinecone (rule 2) and keep student answers out of Pinecone (rule 4). The existing `REFERENCE_UNAVAILABLE` fallback in `evaluator_service.py` is where retrieval plugs in. (5.3 is a frontend step; its backend prerequisites V1/V3/M1/M2 are done and in `openapi.json`.)
 
 ## What Must NOT Be Repeated
 
-- Do not re-implement 0.1–4.2 or 5.1 — they are done.
-- Do not build V2 (batch AI evaluation), Pinecone/RAG (6.1), anomaly detection (7.x), or moderation (8.x) in the 5.2 session — those are separate, later steps.
-- Do not add the `anthropic` SDK or `google-generativeai` SDK as new dependencies — keep using `httpx` directly, or if a real SDK is genuinely required later, say so explicitly rather than adding it silently.
-- Do not change `AIEvaluation`/`Answer` model columns — the schema is already correct and matches `database-schema.md`.
-- Do not touch frontend files.
-- **Before trusting 5.1 as fully verified, run `pytest backend/tests/` (the whole suite, not just the new file) against a real Postgres DB in an environment with internet access to install `requirements.txt`.** This was not possible in the session that wrote this file.
+- Don't redo 0.1–5.2. Don't re-implement `is_stale()`, the evaluation upsert, or the guards.
+- Don't touch anomalies (7.x) or moderation (8.x) — `final_marks` writes from ModerationService are Phase 8.
+- Don't touch frontend files. Don't add the `anthropic`/`google-generativeai` SDKs.
+- Run tests as `python -m pytest tests/ -v` (not bare `pytest`).

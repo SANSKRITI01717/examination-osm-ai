@@ -45,7 +45,7 @@ Frontend can run ahead of the backend by one phase using mocks. **Freeze rule:**
 - [x] 4.1 OCR adapter + preprocessing + confidence + job runner
 - [x] 4.2 Processing screen + answer list + OCR panel
 - [x] 5.1 Evaluator + validator + LLM client
-- [ ] 5.2 Marking service + guards
+- [x] 5.2 Marking service + guards
 - [ ] 5.3 Workspace AI panel + marking panel
 - [ ] 6.1 Pinecone indexer + retriever + fallback
 - [ ] 6.2 Reference documents UI
@@ -58,16 +58,18 @@ Frontend can run ahead of the backend by one phase using mocks. **Freeze rule:**
 - [ ] 10.1 Seed/demo data
 - [ ] 10.2 Deploy + mobile pass + smoke test
 
-**Next session should start with: step 5.2 — Marking service + guards (backend).**
-Build `app/services/marking_service.py` implementing M1 (`POST /answers/{id}/evaluation/accept-ai`) and M2
-(`PUT /answers/{id}/evaluation`) per api-spec.md §12. Guards: refuse `accept-ai` when
-`ocr_review_required && !ocr_verified` (OCR_NOT_VERIFIED) or when the linked AI evaluation is stale
-(AI_EVAL_STALE, use `app.ai.llm.validator.is_stale`, already built in 5.1). Validate marks range and
-criterion-sum (MARKS_OUT_OF_RANGE, CRITERIA_SUM_MISMATCH). On submit, write `answers.final_marks`,
-`final_source="examiner"`, `marking_status="marked"` (invariant 5 — this is the only other place besides
-ModerationService allowed to write final_marks). Reuse the ANSWER_LOCKED / assignment-check pattern already
-established in `ocr_service.py` and `evaluator_service.py`. Do not touch anomalies, moderation, or Pinecone —
-those are Phases 6-8.
+**Next session should start with: step 6.1 — Pinecone indexer + retriever + fallback (backend), per `ai-pipeline.md` §6.**
+Step 5.3 (workspace AI panel + marking panel) is a frontend step (Gemini); the backend endpoints it needs
+(V1, V3, M1, M2) are done and in `backend/openapi.json`. Before 6.1, note these open items:
+
+- **V2 (batch AI evaluation, `POST /exams/{id}/ai-evaluation/run`) is not built.** It is listed in Phase 5's endpoints
+  (V1–V3) but no checklist step covers it; 5.1 and 5.2 both deliberately skipped it. Decide with the owner where it goes.
+- **`app/core/storage/` is missing from the repo/ZIP** because `.gitignore` line 51 (`storage/`) also matches that Python
+  package. The code imports it (`ocr_service.py`, `sheets.py`, `sheet_service.py`), so a fresh clone cannot start.
+  Fix `.gitignore` (anchor it: `/storage/` and `/backend/storage/`) and commit the package. `.gitignore` is not in the
+  ownership table, so this was left for the owner rather than changed silently.
+- **Frontend contract mismatch for 5.3:** `MarkingPanel.tsx` sends `criterion_marks` as a `{id: marks}` map; the locked schema
+  and the backend use a list `[{criterion_id, awarded_marks}]` (see `api-spec.md` §12 implementation notes).
 
 
 ## 4. Demo script (target for phase 10)
