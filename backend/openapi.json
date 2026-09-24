@@ -1736,6 +1736,230 @@
         }
       }
     },
+    "/api/v1/answers/{id}/ai-evaluation": {
+      "post": {
+        "tags": [
+          "AI Evaluation"
+        ],
+        "summary": "Trigger Ai Evaluation",
+        "description": "V1: Run AI evaluation for one answer (synchronous). Admin or the assigned examiner.\nMode comes from the question unless force_standard is set.",
+        "operationId": "trigger_ai_evaluation_api_v1_answers__id__ai_evaluation_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunAIEvaluationRequest",
+                "default": {
+                  "force_standard": false
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AIEvaluationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/answers/{id}/ai-evaluations": {
+      "get": {
+        "tags": [
+          "AI Evaluation"
+        ],
+        "summary": "Get Ai Evaluation History",
+        "description": "V3: History of AI suggestions for one answer, newest first.",
+        "operationId": "get_ai_evaluation_history_api_v1_answers__id__ai_evaluations_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AIEvaluationListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/answers/{id}/evaluation/accept-ai": {
+      "post": {
+        "tags": [
+          "Marking"
+        ],
+        "summary": "Accept Ai Suggestion",
+        "description": "M1: Accept the AI suggestion as-is (creates a submitted evaluation, source=ai_accepted).",
+        "operationId": "accept_ai_suggestion_api_v1_answers__id__evaluation_accept_ai_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptAIRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/answers/{id}/evaluation": {
+      "put": {
+        "tags": [
+          "Marking"
+        ],
+        "summary": "Save Or Submit Marks",
+        "description": "M2: Save a draft or submit explicit marks (ai_modified or manual).",
+        "operationId": "save_or_submit_marks_api_v1_answers__id__evaluation_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveMarksRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": [
@@ -1779,6 +2003,144 @@
   },
   "components": {
     "schemas": {
+      "AIEvaluationListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AIEvaluationResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "AIEvaluationListResponse"
+      },
+      "AIEvaluationResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "answer_id": {
+            "type": "integer",
+            "title": "Answer Id"
+          },
+          "mode_requested": {
+            "type": "string",
+            "title": "Mode Requested"
+          },
+          "mode_used": {
+            "type": "string",
+            "title": "Mode Used"
+          },
+          "model_name": {
+            "type": "string",
+            "title": "Model Name"
+          },
+          "prompt_version": {
+            "type": "string",
+            "title": "Prompt Version"
+          },
+          "suggested_marks": {
+            "type": "number",
+            "title": "Suggested Marks"
+          },
+          "max_marks": {
+            "type": "number",
+            "title": "Max Marks"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence"
+          },
+          "llm_confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llm Confidence"
+          },
+          "criteria": {
+            "items": {
+              "$ref": "#/components/schemas/CriterionResult"
+            },
+            "type": "array",
+            "title": "Criteria"
+          },
+          "overall_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overall Reason"
+          },
+          "retrieval": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieval"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "default": []
+          },
+          "stale": {
+            "type": "boolean",
+            "title": "Stale",
+            "default": false
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "answer_id",
+          "mode_requested",
+          "mode_used",
+          "model_name",
+          "prompt_version",
+          "suggested_marks",
+          "max_marks",
+          "confidence",
+          "criteria"
+        ],
+        "title": "AIEvaluationResponse"
+      },
       "AIMarkingCounters": {
         "properties": {
           "not_requested": {
@@ -1809,6 +2171,25 @@
         },
         "type": "object",
         "title": "AIMarkingCounters"
+      },
+      "AcceptAIRequest": {
+        "properties": {
+          "ai_evaluation_id": {
+            "type": "integer",
+            "title": "Ai Evaluation Id"
+          },
+          "active_seconds": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Active Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ai_evaluation_id",
+          "active_seconds"
+        ],
+        "title": "AcceptAIRequest"
       },
       "AnswerDetailResponse": {
         "properties": {
@@ -2694,6 +3075,144 @@
         ],
         "title": "Body_upload_answer_sheet_endpoint_api_v1_exams__id__answer_sheets_post"
       },
+      "CriterionMarkInput": {
+        "properties": {
+          "criterion_id": {
+            "type": "string",
+            "title": "Criterion Id"
+          },
+          "awarded_marks": {
+            "type": "number",
+            "title": "Awarded Marks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "criterion_id",
+          "awarded_marks"
+        ],
+        "title": "CriterionMarkInput"
+      },
+      "CriterionResult": {
+        "properties": {
+          "criterion_id": {
+            "type": "string",
+            "title": "Criterion Id"
+          },
+          "criterion": {
+            "type": "string",
+            "title": "Criterion"
+          },
+          "max_marks": {
+            "type": "number",
+            "title": "Max Marks"
+          },
+          "awarded_marks": {
+            "type": "number",
+            "title": "Awarded Marks"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "criterion_id",
+          "criterion",
+          "max_marks",
+          "awarded_marks",
+          "reason"
+        ],
+        "title": "CriterionResult"
+      },
+      "EvaluationExaminer": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "full_name"
+        ],
+        "title": "EvaluationExaminer"
+      },
+      "EvaluationResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "marks_awarded": {
+            "type": "number",
+            "title": "Marks Awarded"
+          },
+          "criterion_marks": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Criterion Marks"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "examiner": {
+            "$ref": "#/components/schemas/EvaluationExaminer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "marks_awarded",
+          "source",
+          "status",
+          "examiner"
+        ],
+        "title": "EvaluationResponse"
+      },
       "EvaluationSummary": {
         "properties": {
           "id": {
@@ -3493,6 +4012,87 @@
           "criteria"
         ],
         "title": "RubricResponse"
+      },
+      "RunAIEvaluationRequest": {
+        "properties": {
+          "force_standard": {
+            "type": "boolean",
+            "title": "Force Standard",
+            "description": "Skip reference retrieval for a reference_grounded question. Logged as mode_requested='standard'.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "RunAIEvaluationRequest"
+      },
+      "SaveMarksRequest": {
+        "properties": {
+          "marks_awarded": {
+            "type": "number",
+            "title": "Marks Awarded"
+          },
+          "criterion_marks": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CriterionMarkInput"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Criterion Marks"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "ai_modified",
+              "manual"
+            ],
+            "title": "Source"
+          },
+          "ai_evaluation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Evaluation Id"
+          },
+          "active_seconds": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Active Seconds"
+          },
+          "submit": {
+            "type": "boolean",
+            "title": "Submit"
+          }
+        },
+        "type": "object",
+        "required": [
+          "marks_awarded",
+          "source",
+          "active_seconds",
+          "submit"
+        ],
+        "title": "SaveMarksRequest"
       },
       "StudentCreate": {
         "properties": {
